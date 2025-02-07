@@ -1,21 +1,15 @@
-!ollama pull llama3.2
-import os
 import requests
-from dotenv import load_dotenv
 from bs4 import BeautifulSoup
-from IPython.display import Markdown, display
 from openai import OpenAI
 
-# Some websites need you to use proper headers when fetching them:
-headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36"
-}
-
-openai = OpenAI(
-        base_url="http://localhost:11434/v1",  # Ollama 的本地服務器地址
-        api_key="ollama",  # 這裡的 "ollama" 只是一個佔位符,因為本地運行不需要真實的 API key
-
-    )
+class Config:
+    OLLAMA_BASE_URL = "http://localhost:11434/v1"
+    OLLAMA_API_KEY = "ollama"
+    HEADERS = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36"
+    }
+    DEFAULT_MODEL = "llama3.2"
 
 class Website:
 
@@ -26,7 +20,7 @@ class Website:
         """
 
         self.url = url
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=Config.HEADERS)
         soup = BeautifulSoup(response.content, "html.parser")
         self.title = soup.title.string if soup.title else "No title found"
         for irrelevant in soup.body(["script", "style", "img", "input"]):
@@ -34,43 +28,59 @@ class Website:
         self.text = soup.body.get_text(separator="\n", strip=True)
 
 
-# Step1: set user prompt and system prompt
-def user_prompt_for(website):
+class LLMSummarizer:
+    def __init__(self):
+        """Initialize OpenAI client with Ollama configuration."""
+        self.client = OpenAI(
+            base_url=Config.OLLAMA_BASE_URL, api_key=Config.OLLAMA_API_KEY
+        )
+        self.model = Config.DEFAULT_MODEL
 
-    user_prompt = "This is the website that tells the trend of the llm. \
-    summarize what he talks about in the article.\
-    don't contain reference in your summary."
-    user_prompt += website.text
-    return user_prompt
+    def _create_messages(self, website, system_prompt, user_prompt):
 
-def display_summary(messages):
+        user_prompt += website.text
 
-    response = openai.chat.completions.create(model="llama3.2", messages=messages)
-    return response.choices[0].message.content
-
-
-def main():
-    # set the OpenAI
-    
-
-    system_prompt = "imagine you are a professional ai engineer, you are teaching poeple ai with simple analogy and examples.Always follow user's format requirements strictly. Never include references unless specifically requested. Respond in markdown."
-
-    # Step 2: get the website content
-    website = Website(
-        "https://medium.com/@cch.chichieh/llm-%E8%A9%95%E4%BC%B0%E6%96%B9%E6%B3%95%E6%8C%87%E5%8D%97-%E8%B6%A8%E5%8B%A2-%E6%8C%87%E6%A8%99%E8%88%87%E6%9C%AA%E4%BE%86%E6%96%B9%E5%90%91-e81616d30e53"
-    )
-    print("title", website.title)
-    print("text", website.text)
-
-    # Step 3: set the messages
-    messages =[
+        return [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt_for(website)},
+            {"role": "user", "content": user_prompt},
         ]
 
-    # Step 3: Call OpenAI
+    def display_summary(self, website: Website, system_prompt: str, user_prompt: str) -> str:
 
-    summary = display_summary(messages)
+        messages = self._create_messages(website, system_prompt, user_prompt)
+        response = self.client.chat.completions.create(model=self.model, messages=messages)
+        return response.choices[0].message.content
+
+def main():
+
+    # Step 1: get the website content
+    website = Website(
+        "https://medium.com/@r41091113/%E5%9B%9E%E5%8F%B0%E7%81%A3%E6%89%BE%E5%B7%A5%E4%BD%9C%E5%9B%89-2022-%E7%B6%B2%E8%B7%AF%E7%94%A2%E6%A5%AD%E8%B3%87%E6%96%99%E7%A7%91%E5%AD%B8-%E8%B3%87%E6%96%99%E5%88%86%E6%9E%90%E9%9D%A2%E8%A9%A6%E7%B6%93%E9%A9%97%E5%88%86%E4%BA%AB-1cd39b2b09b9"
+    )
+    print(f"Title: {website.title}")
+    print(f"Text: {website.text[:200]}...")  # Print first 200 chars
+
+    # Step 2: create the summarizer
+    summarizer = LLMSummarizer()
+
+    # Step 3: create the prompts
+    system_prompt = (
+            "Imagine you are a professional AI engineer, teaching people AI with "
+            "simple analogy and examples. Always follow user's format requirements "
+            "strictly. Never include references unless specifically requested. "
+            "Respond in markdown."
+        )
+
+    user_prompt = (
+        "This is the website that tells the trend of the LLM. "
+        "Summarize what it talks about in the article. "
+        "Don't contain reference in your summary."
+    ) 
+
+    # Step 4: get the summary
+    summary = summarizer.display_summary(website, system_prompt, user_prompt)
+    print("\nSummary:")
     print(summary)
+
 
 __name__ == "__main__" and main()
