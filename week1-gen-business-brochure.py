@@ -3,6 +3,7 @@ import json
 from bs4 import BeautifulSoup
 from IPython.display import Markdown, display, update_display
 from openai import OpenAI
+import gradio as gr 
 
 
 class Config:
@@ -44,7 +45,8 @@ class Website:
 # First step: Have model figure out which links are relevant
 class Link:
     def __init__(self, client):
-        self.client = client
+        self.client =  client
+
     @staticmethod
     def get_links_system_prompt():
         link_system_prompt = "You are provided with a list of links found on a webpage. \
@@ -70,20 +72,20 @@ class Link:
         user_prompt += "\n".join(website.links)
         return user_prompt
 
-
-    def get_links(self,url, client):
+    def get_links(self,url):
         website = Website(url)
-        response = client.chat.completions.create(
+
+        response = self.client.chat.completions.create(
             model=Config.DEFAULT_MODEL,
             messages=[
-                {"role": "system", "content": self.get_links_system_prompt},
+                {"role": "system", "content": self.get_links_system_prompt()},
                 {"role": "user", "content": self.get_links_user_prompt(website)},
             ],
             response_format={"type": "json_object"},
         )
         result = response.choices[0].message.content
-        return json.loads(result)
 
+        return json.loads(result)
 
     def get_all_details(self, url):
         result = "Landing page:\n"
@@ -116,6 +118,7 @@ class Brochure:
     def get_brochure_user_prompt(self, company_name,url ):
         user_prompt = f"You are looking at a company called: {company_name}\n"
         user_prompt += f"Here are the contents of its landing page and other relevant pages; use this information to build a short brochure of the company in markdown.\n"
+       
         user_prompt += self.link.get_all_details(url)
         user_prompt = user_prompt[:Config.MAX_CONTENT_LENGTH]  # Truncate if more than 5,000 characters
         return user_prompt
@@ -129,9 +132,9 @@ class Brochure:
             ],
         )
         result = response.choices[0].message.content
-        display(Markdown(result))
+        # display(Markdown(result))
         return result
-    
+
     def stream_brochure(self, company_name, url):
         stream = self.client.chat.completions.create(
             model=Config.DEFAULT_MODEL,
@@ -145,20 +148,44 @@ class Brochure:
             stream=True, # user can see the response as it is being generated
         )
 
-        # Display the response using markdown
-        response = ""
-        display_handle = display(Markdown(""), display_id=True)
+        #Display the response using markdown
+        # response = ""
+        # display_handle = display(Markdown(""), display_id=True)
+        # for chunk in stream:
+        #     response += chunk.choices[0].delta.content or ''
+        #     response = response.replace("```","").replace("markdown", "")
+        #     update_display(Markdown(response), display_id=display_handle.display_id)
+
+        result = ""
         for chunk in stream:
-            response += chunk.choices[0].delta.content or ''
-            response = response.replace("```","").replace("markdown", "")
-            update_display(Markdown(response), display_id=display_handle.display_id)
+            result += chunk.choices[0].delta.content or ""
+            yield result
+
+def show_brochure(create_brochure):
+    
+    view = gr.Interface(
+        fn=create_brochure,
+        inputs=[
+            gr.Textbox(label="Company name:"),
+            gr.Textbox(label="Landing page URL including http:// or https://"),
+            
+        ],
+        outputs=[gr.Markdown(label="Brochure:")],
+        flagging_mode="never",
+    )
+    view.launch()
 
 def main():
     client = OpenAI(
         base_url=Config.OLLAMA_BASE_URL, api_key=Config.OLLAMA_API_KEY
     )
+
+    #result= Brochure(client).create_brochure("Nuli", "https://nuli.app")
+    #print(result)
+
+    # with ui 
+    show_brochure(Brochure(client).stream_brochure)
     
-    result= Brochure(client).stream_brochure("Nuli", "https://nuli.app")
-    print(result)
+
 
 __name__ == "__main__" and main()
