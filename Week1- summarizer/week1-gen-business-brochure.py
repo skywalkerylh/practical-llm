@@ -14,8 +14,8 @@ class Config:
         "(KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36"
     }
     DEFAULT_MODEL = "llama3.2"
-    MAX_CONTENT_LENGTH = 5_000
-    MAX_LINKS = 3
+    MAX_CONTENT_LENGTH = 10_000
+    MAX_LINKS = 10
 
 
 class Website:
@@ -113,12 +113,13 @@ class Brochure:
     def get_brochure_system_prompt():
         return "You are an assistant that analyzes the contents of several relevant pages from a company website \
                 and creates a short humorous, entertaining, jokey brochure about the company for prospective customers, investors and recruits. Respond in markdown.\
-                Include details of company culture, customers and careers/jobs if you have the information."
+                Must include details of company culture, customers and careers/jobs if you have the information. \
+                "
 
     def get_brochure_user_prompt(self, company_name,url ):
         user_prompt = f"You are looking at a company called: {company_name}\n"
         user_prompt += f"Here are the contents of its landing page and other relevant pages; use this information to build a short brochure of the company in markdown.\n"
-       
+
         user_prompt += self.link.get_all_details(url)
         user_prompt = user_prompt[:Config.MAX_CONTENT_LENGTH]  # Truncate if more than 5,000 characters
         return user_prompt
@@ -136,19 +137,27 @@ class Brochure:
         return result
 
     def stream_brochure(self, company_name, url):
+
+        yield "Analyzing website links..."
+        system_prompt = self.get_brochure_system_prompt()
+        user_prompt = self.get_brochure_user_prompt(company_name, url)
+
+        yield "Generating business brochure..."
         stream = self.client.chat.completions.create(
             model=Config.DEFAULT_MODEL,
             messages=[
-                {"role": "system", "content": self.get_brochure_system_prompt()},
+                {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
-                    "content": self.get_brochure_user_prompt(company_name, url),
+                    "content": user_prompt,
                 },
             ],
-            stream=True, # user can see the response as it is being generated
+            stream=True,  # user can see the response as it is being generated
+            temperature=0.2,
+            max_tokens=300
         )
 
-        #Display the response using markdown
+        # Display the response using markdown
         # response = ""
         # display_handle = display(Markdown(""), display_id=True)
         # for chunk in stream:
@@ -180,12 +189,11 @@ def main():
         base_url=Config.OLLAMA_BASE_URL, api_key=Config.OLLAMA_API_KEY
     )
 
-    #result= Brochure(client).create_brochure("Nuli", "https://nuli.app")
-    #print(result)
+    result= Brochure(client).create_brochure("Nuli", "https://nuli.app")
+    print(result)
 
     # with ui 
-    show_brochure(Brochure(client).stream_brochure)
-    
+    #show_brochure(Brochure(client).stream_brochure)
 
 
 __name__ == "__main__" and main()
