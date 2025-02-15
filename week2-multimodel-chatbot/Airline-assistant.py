@@ -1,16 +1,15 @@
 import json
-from openai import OpenAI
 import gradio as gr
-
+import base64
+from openai import OpenAI
+from io import BytesIO
+from PIL import Image
+from Utils.ImgGenerator import artist
 
 class Config:
-    OLLAMA_BASE_URL = "http://localhost:11434/v1"
-    OLLAMA_API_KEY = "ollama"
-    HEADERS = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36"
-    }
-    DEFAULT_MODEL = "llama3.2"
+    BASE_URL = "http://localhost:11434/v1"
+    API_KEY = "nokeyneeded"
+    DEFAULT_MODEL = "llama3.1:8b"
 
 
 class PriceTool:
@@ -70,28 +69,51 @@ class PriceTool:
 class Chatbot:
     def __init__(self):
         self.openai = OpenAI(
-            base_url=Config.OLLAMA_BASE_URL, api_key=Config.OLLAMA_API_KEY
+            base_url=Config.BASE_URL, api_key=Config.API_KEY
         )
         # tools means the functions that the chatbot can call when llm doesn't know the answer
         self.tools =  [{"type": "function", "function": PriceTool.price_function()}]
 
         self.system_message = """You are a helpful assistant for an Airline called FlightAI. 
                                 Give short, courteous answers, no more than 1 sentence. 
-                                Always be accurate. If you don't know the answer, say so."""
+                                Always be accurate. If you don't know the answer, say so.
+                                'Greetings from FlightAI! How can I help you today?' is the greeting message.
+                                Notes and murmurs are not allowed. e.g. Note: This is a general greeting message. I don't know what actions to take."""
 
-    def chat(self, message, history):
+        
+
+    def text_only(self, message, history):
+        messages = [{"role": "system", "content": self.system_message}] + history + [{"role": "user", "content": message}]
+        response = self.openai.chat.completions.create(
+            model=Config.DEFAULT_MODEL, messages=messages, tools=self.tools
+        )
+
+        if response.choices[0].finish_reason=="tool_calls":
+            message = response.choices[0].message
+            response, city = PriceTool().handle_tool_call(message)
+            messages.append(message)
+            messages.append(response)
+            response = self.openai.chat.completions.create(
+                model=Config.DEFAULT_MODEL, messages=messages
+            )
+
+        return response.choices[0].message.content
+
+    def text_and_img(self, history):
         """
         Handles the chat interaction with the user.
         """
         messages = (
             [{"role": "system", "content": self.system_message}]
-            + history
-            + [{"role": "user", "content": message}]
+            + history 
+            
         )
         response = self.openai.chat.completions.create(
             model=Config.DEFAULT_MODEL, messages=messages, tools=self.tools
         )
-
+        image = None 
+       
+        print(response.choices[0].finish_reason)
         # when model doesn't know the answer, it calls the tool
         if response.choices[0].finish_reason == "tool_calls":
 
@@ -110,11 +132,44 @@ class Chatbot:
                 model=Config.DEFAULT_MODEL, messages=messages
             )
 
-        return response.choices[0].message.content
+            # gen img
+            image = artist(city)
+
+        reply = response.choices[0].message.content
+        history += [{"role":"assistant", "content":reply}]
+        
+        return history, image
+        
+
+class UI:
+    def text_only():
+        gr.ChatInterface(fn=Chatbot().text_only, type="messages").launch()
+        
+    def text_and_image():
+       with gr.Blocks() as ui:
+        with gr.Row():
+            chatbot = gr.Chatbot(height=500, type="messages")
+            image_output = gr.Image(height=500)
+        with gr.Row():
+            entry = gr.Textbox(label="Chat with our AI Assistant:")
+        with gr.Row():
+            clear = gr.Button("Clear")
+
+        def do_entry(message, history):
+            history += [{"role":"user", "content":message}]
+            return "", history
+
+        entry.submit(do_entry, inputs=[entry, chatbot], outputs=[entry, chatbot]).then(
+            Chatbot().text_and_img, inputs=chatbot, outputs=[chatbot, image_output]
+        )
+        clear.click(lambda: None, inputs=None, outputs=chatbot, queue=False)
+
+        ui.launch(inbrowser=True)
 
 def main():
+    #UI.text_only()
+    UI.text_and_image()
 
-    gr.ChatInterface(fn=Chatbot().chat, type="messages").launch()
 
 if __name__ == "__main__":
     main()
