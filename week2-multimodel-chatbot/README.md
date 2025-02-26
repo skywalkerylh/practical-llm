@@ -6,11 +6,10 @@
 - can generate customize and precise response 
 
 
-# Chatbot - Airline assitant 
+# Chatbot - Company knowledge worker 
 <img src="/Fig/Airline-assistant-gen-img.png" width="600" height="300" />
 
-- Travelers needed better flight information access.
-- Build an AI assistant for ticket prices with visual features.
-- Combined Llama3.1, function calling, and Stable Diffusion with LoRA.
-- Delivered a chatbot that provides ticket prices and generates destination images.
-
+- Helps travelers quickly check flight ticket prices
+- Enhances LLM expertise with destination price lookup functionality and generation of popular attraction images
+- Utilizes Llama3.1 + fine-tuned Stable Diffusion to improve image generation quality
+- Automatically generates attraction images when travelers use the ticket search function
