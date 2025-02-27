@@ -6,7 +6,7 @@
 - week5: Integrate RAG into chatbot
 
 # Project
-# Chatbot - InsureLLM [Demo]([https://drive.google.com/file/d/1C9kAQOPVrBQy6IrsndSJZhTmQzNM-YaR/view?usp=sharing](https://drive.google.com/file/d/1CLrgC36yhEiFpNlJCPIJLkhDR4HHj8_c/view?usp=sharing))
+# Chatbot - InsureLLM [(Demo)](https://drive.google.com/file/d/1C9kAQOPVrBQy6IrsndSJZhTmQzNM-YaR/view?usp=sharing)
 <img src="Fig/ChatbotwithRAG.png" width="600" height="300" />
 
 - Company employees struggled to quickly access internal information
