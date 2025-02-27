@@ -12,6 +12,7 @@ from langchain_chroma import Chroma
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationalRetrievalChain
 from langchain_openai import ChatOpenAI
+from langchain.prompts import PromptTemplate
 
 class Config:
     BASE_URL = "http://localhost:11434/v1"
@@ -77,8 +78,23 @@ class DocumentProcessor:
 
         return vectorstore
 
+class Prompt:
+    def create_chat_prompt(self, system_prompt):
+
+        system_message = SystemMessagePromptTemplate.from_template(system_prompt)
+        
+        chat_prompt = ChatPromptTemplate.from_messages(
+            [
+                system_message,
+                MessagesPlaceholder(variable_name="chat_history"),
+                HumanMessagePromptTemplate.from_template("{question}"),
+            ]
+        )
+        return chat_prompt
+
+
 class Chatbot:
-    def __init__(self, database):
+    def __init__(self, database, chat_prompt):
 
         llm = ChatOpenAI(temperature=0.7, 
                      model_name=Config.DEFAULT_MODEL, 
@@ -90,20 +106,26 @@ class Chatbot:
 
         # the retriever is an abstraction over the VectorStore that will be used during RAG
         retriever = database.as_retriever()
-
+    
         # putting it together: set up the conversation chain with the LLM, the vector store and memory
         self.conversation_chain = ConversationalRetrievalChain.from_llm(
-            llm=llm, retriever=retriever, memory=memory
+            llm=llm,
+            retriever=retriever,
+            memory=memory,
+            combine_docs_chain_kwargs={"prompt": chat_prompt},
         )
     def chat(self, question, history):
-        result = self.conversation_chain.invoke({"question": question})
+        result = self.conversation_chain.invoke(
+                {"question": question,
+                 "chat_history": history},
+                )
         return result["answer"]
-    
+
     def run_text_only(self, query):
-        
+
         result = self.conversation_chain.invoke({"question": query})
         print(result["answer"])
-    
+
     def run_UI(self):
         view = gr.ChatInterface(self.chat, type="messages").launch(inbrowser=True)
 
@@ -111,18 +133,41 @@ class Chatbot:
 if __name__ == "__main__":
 
     os.chdir('week5-RAG')
-    processor = DocumentProcessor(chunk_size=1000, chunk_overlap=200)
+
+    system_prompt = """
+    You are an insurance knowledge assistant for Insurellm employees. 
+    Answer questions based on the retrieved documents. 
+    If you don't know the answer, say you don't know rather than making up information.
+    'Hi, how can I help you today?' is the greeting message.
+    If user needs more information, provide detailed answers.
+    If user asks for more information, provide detailed answers.
+    If user mentioned 'bye', then reply with 'Goodbye! Have a great day!' 
+
+    {context}
+    {chat_history}
+    {question}
+
+    """
+
+    
+    custom_prompt = PromptTemplate(
+        template=system_prompt,
+        input_variables=["context", "chat_history", "question"],
+    )
 
     folders = glob.glob("knowledge-base/*")
-    docs = processor.load_documents(folders)
+
+    doc_processor = DocumentProcessor()
+    docs = doc_processor.load_documents(folders)
     print(f"Loaded {len(docs)} documents")
 
-    chunks = processor.split_documents()
+    chunks = doc_processor.split_documents()
     print(f"Created {len(chunks)} splits")
 
-    vectors = processor.create_embeddings(chunks)
+    vectors = doc_processor.create_embeddings(chunks)
 
-    Chatbot(vectors).run_UI()
-    
-    #query = "Please explain what Insurellm is in a couple of sentences"
-    #Chatbot(vectors).run_text_only(query)
+    #chat_prompt = Prompt().create_chat_prompt(system_prompt)
+    Chatbot(vectors, custom_prompt).run_UI()
+
+    query = "Please explain what Insurellm is in a couple of sentences"
+    Chatbot(vectors).run_text_only(query)
